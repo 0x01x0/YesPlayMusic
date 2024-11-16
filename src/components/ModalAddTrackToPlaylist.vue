@@ -17,7 +17,7 @@
         class="playlist"
         @click="addTrackToPlaylist(playlist.id)"
       >
-        <img :src="playlist.coverImgUrl | resizeImage(224)" />
+        <img :src="playlist.coverImgUrl | resizeImage(224)" loading="lazy" />
         <div class="info">
           <div class="title">{{ playlist.name }}</div>
           <div class="track-count">{{ playlist.trackCount }} 首</div>
@@ -32,7 +32,6 @@ import { mapActions, mapMutations, mapState } from 'vuex';
 import Modal from '@/components/Modal.vue';
 import locale from '@/locale';
 import { addOrRemoveTrackFromPlaylist } from '@/api/playlist';
-import { disableScrolling, enableScrolling } from '@/utils/ui';
 
 export default {
   name: 'ModalAddTrackToPlaylist',
@@ -57,9 +56,9 @@ export default {
           value,
         });
         if (value) {
-          disableScrolling();
+          this.$store.commit('enableScrolling', false);
         } else {
-          enableScrolling();
+          this.$store.commit('enableScrolling', true);
         }
       },
     },

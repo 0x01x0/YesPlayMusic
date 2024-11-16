@@ -1,6 +1,9 @@
 <template>
   <div v-show="show" class="home">
-    <div v-if="settings.showPlaylistsByAppleMusic !== false" class="index-row">
+    <div
+      v-if="settings.showPlaylistsByAppleMusic !== false"
+      class="index-row first-row"
+    >
       <div class="title"> by Apple Music </div>
       <CoverRow
         :type="'playlist'"
@@ -66,11 +69,11 @@
 </template>
 
 <script>
-import { toplists, recommendPlaylist } from '@/api/playlist';
+import { toplists } from '@/api/playlist';
 import { toplistOfArtists } from '@/api/artist';
-import { byAppleMusic } from '@/utils/staticData';
-import { countDBSize } from '@/utils/db';
 import { newAlbums } from '@/api/album';
+import { byAppleMusic } from '@/utils/staticData';
+import { getRecommendPlayList } from '@/utils/playList';
 import NProgress from 'nprogress';
 import { mapState } from 'vuex';
 import CoverRow from '@/components/CoverRow.vue';
@@ -103,24 +106,35 @@ export default {
   },
   activated() {
     this.loadData();
+    this.$parent.$refs.scrollbar.restorePosition();
   },
   methods: {
     loadData() {
-      if (!this.show) NProgress.start();
-      recommendPlaylist({
-        limit: 10,
-      }).then(data => {
-        this.recommendPlaylist.items = data.result;
+      setTimeout(() => {
+        if (!this.show) NProgress.start();
+      }, 1000);
+      getRecommendPlayList(10, false).then(items => {
+        this.recommendPlaylist.items = items;
         NProgress.done();
         this.show = true;
       });
       newAlbums({
-        area: 'EA',
+        area: this.settings.musicLanguage ?? 'ALL',
         limit: 10,
       }).then(data => {
         this.newReleasesAlbum.items = data.albums;
       });
-      toplistOfArtists(2).then(data => {
+
+      const toplistOfArtistsAreaTable = {
+        all: null,
+        zh: 1,
+        ea: 2,
+        jp: 4,
+        kr: 3,
+      };
+      toplistOfArtists(
+        toplistOfArtistsAreaTable[this.settings.musicLanguage ?? 'all']
+      ).then(data => {
         let indexs = [];
         while (indexs.length < 6) {
           let tmp = ~~(Math.random() * 100);
@@ -136,7 +150,6 @@ export default {
           this.topList.ids.includes(l.id)
         );
       });
-      countDBSize();
       this.$refs.DailyTracksCard.loadDailyTracks();
     },
   },
@@ -146,6 +159,9 @@ export default {
 <style lang="scss" scoped>
 .index-row {
   margin-top: 54px;
+}
+.index-row.first-row {
+  margin-top: 32px;
 }
 .playlists {
   display: flex;

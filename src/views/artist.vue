@@ -1,8 +1,8 @@
 <template>
-  <div v-show="show" class="artist">
+  <div v-show="show" class="artist-page">
     <div class="artist-info">
       <div class="head">
-        <img :src="artist.img1v1Url | resizeImage(1024)" />
+        <img :src="artist.img1v1Url | resizeImage(1024)" loading="lazy" />
       </div>
       <div>
         <div class="name">{{ artist.name }}</div>
@@ -42,7 +42,7 @@
         </div>
       </div>
     </div>
-    <div class="latest-release">
+    <div v-if="latestRelease !== undefined" class="latest-release">
       <div class="section-title">{{ $t('artist.latestRelease') }}</div>
       <div class="release">
         <div class="container">
@@ -75,7 +75,7 @@
             @mouseleave="mvHover = false"
             @click="goToMv(latestMV.id)"
           >
-            <img :src="latestMV.coverUrl" />
+            <img :src="latestMV.coverUrl" loading="lazy" />
             <transition name="fade">
               <div
                 v-show="mvHover"
@@ -95,7 +95,7 @@
             <div class="date">
               {{ latestMV.publishTime | formatDate }}
             </div>
-            <div class="type"> 最新MV </div>
+            <div class="type">{{ $t('artist.latestMV') }}</div>
           </div>
         </div>
         <div v-show="!latestMV.id"></div>
@@ -127,7 +127,7 @@
     <div v-if="mvs.length !== 0" id="mvs" class="mvs">
       <div class="section-title"
         >MVs
-        <router-link v-show="hasMoreMV" :to="`/artist/${this.artist.id}/mv`">{{
+        <router-link v-show="hasMoreMV" :to="`/artist/${artist.id}/mv`">{{
           $t('home.seeMore')
         }}</router-link>
       </div>
@@ -144,7 +144,7 @@
     </div>
 
     <div v-if="similarArtists.length !== 0" class="similar-artists">
-      <div class="section-title">相似艺人</div>
+      <div class="section-title">{{ $t('artist.similarArtists') }}</div>
       <CoverRow
         type="artist"
         :column-number="6"
@@ -158,7 +158,7 @@
       :close="toggleFullDescription"
       :show-footer="false"
       :click-outside-hide="true"
-      title="艺术家介绍"
+      :title="$t('artist.artistDesc')"
     >
       <p class="description-fulltext">
         {{ artist.briefDesc }}
@@ -168,6 +168,9 @@
     <ContextMenu ref="artistMenu">
       <div class="item" @click="copyUrl(artist.id)">{{
         $t('contextMenu.copyUrl')
+      }}</div>
+      <div class="item" @click="openInBrowser(artist.id)">{{
+        $t('contextMenu.openInBrowser')
       }}</div>
     </ContextMenu>
   </div>
@@ -182,9 +185,9 @@ import {
   followAArtist,
   similarArtists,
 } from '@/api/artist';
+import { getTrackDetail } from '@/api/track';
 import locale from '@/locale';
 import { isAccountLoggedIn } from '@/utils/auth';
-import { disableScrolling, enableScrolling } from '@/utils/ui';
 import NProgress from 'nprogress';
 
 import ButtonTwoTone from '@/components/ButtonTwoTone.vue';
@@ -207,7 +210,6 @@ export default {
     ContextMenu,
   },
   beforeRouteUpdate(to, from, next) {
-    NProgress.start();
     this.artist.img1v1Url =
       'https://p1.music.126.net/VnZiScyynLG7atLIZ2YPkw==/18686200114669622.jpg';
     this.loadData(to.params.id, next);
@@ -240,7 +242,9 @@ export default {
   computed: {
     ...mapState(['player']),
     albums() {
-      return this.albumsData.filter(a => a.type === '专辑');
+      return this.albumsData.filter(
+        a => a.type === '专辑' || a.type === '精选集'
+      );
     },
     eps() {
       return this.albumsData.filter(a =>
@@ -257,25 +261,25 @@ export default {
       };
     },
   },
-  created() {
-    this.loadData(this.$route.params.id);
-  },
   activated() {
-    if (this.show) {
-      if (this.artist.id.toString() !== this.$route.params.id) {
-        this.show = false;
-        NProgress.start();
-        this.loadData(this.$route.params.id);
-      }
+    if (this.artist?.id?.toString() !== this.$route.params.id) {
+      this.loadData(this.$route.params.id);
+    } else {
+      this.$parent.$refs.scrollbar.restorePosition();
     }
   },
   methods: {
     ...mapMutations(['appendTrackToPlayerList']),
     ...mapActions(['playFirstTrackOnList', 'playTrackOnListByID', 'showToast']),
     loadData(id, next = undefined) {
+      setTimeout(() => {
+        if (!this.show) NProgress.start();
+      }, 1000);
+      this.show = false;
+      this.$parent.$refs.main.scrollTo({ top: 0 });
       getArtist(id).then(data => {
         this.artist = data.artist;
-        this.popularTracks = data.hotSongs;
+        this.setPopularTracks(data.hotSongs);
         if (next !== undefined) next();
         NProgress.done();
         this.show = true;
@@ -288,8 +292,16 @@ export default {
         this.mvs = data.mvs;
         this.hasMoreMV = data.hasMore;
       });
-      similarArtists(id).then(data => {
-        this.similarArtists = data.artists;
+      if (isAccountLoggedIn()) {
+        similarArtists(id).then(data => {
+          this.similarArtists = data.artists;
+        });
+      }
+    },
+    setPopularTracks(hotSongs) {
+      const trackIDs = hotSongs.map(t => t.id);
+      getTrackDetail(trackIDs.join(',')).then(data => {
+        this.popularTracks = data.songs;
       });
     },
     goToAlbum(id) {
@@ -331,9 +343,9 @@ export default {
     toggleFullDescription() {
       this.showFullDescription = !this.showFullDescription;
       if (this.showFullDescription) {
-        disableScrolling();
+        this.$store.commit('enableScrolling', false);
       } else {
-        enableScrolling();
+        this.$store.commit('enableScrolling', true);
       }
     },
     openMenu(e) {
@@ -341,7 +353,7 @@ export default {
     },
     copyUrl(id) {
       let showToast = this.showToast;
-      this.$copyText('https://music.163.com/#/artist?id=' + id)
+      this.$copyText(`https://music.163.com/#/artist?id=${id}`)
         .then(function () {
           showToast(locale.t('toast.copied'));
         })
@@ -349,11 +361,19 @@ export default {
           showToast(`${locale.t('toast.copyFailed')}${error}`);
         });
     },
+    openInBrowser(id) {
+      const url = `https://music.163.com/#/artist?id=${id}`;
+      window.open(url);
+    },
   },
 };
 </script>
 
 <style lang="scss" scoped>
+.artist-page {
+  margin-top: 32px;
+}
+
 .artist-info {
   display: flex;
   align-items: center;
